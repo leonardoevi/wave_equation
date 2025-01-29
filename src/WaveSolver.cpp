@@ -107,7 +107,6 @@ void WaveSolver::assemble_matrices() {
 
     for (unsigned int q = 0; q < n_q; ++q) {
       // Evaluate coefficients on this quadrature node.
-      const double mu_loc = mu.value(fe_values.quadrature_point(q));
 
       for (unsigned int i = 0; i < dofs_per_cell; ++i) {
         for (unsigned int j = 0; j < dofs_per_cell; ++j) {
@@ -115,8 +114,7 @@ void WaveSolver::assemble_matrices() {
                                     fe_values.shape_value(j, q) /
                                     (deltat * deltat) * fe_values.JxW(q);
 
-          cell_stiffness_matrix(i, j) += mu_loc *
-                                         fe_values.shape_grad(i, q) *
+          cell_stiffness_matrix(i, j) += fe_values.shape_grad(i, q) *
                                          fe_values.shape_grad(j, q) * fe_values.JxW(q);
         }
       }
@@ -198,12 +196,14 @@ void WaveSolver::assemble_rhs(const double &time) {
     // corresponding boundary function.
     std::map<types::boundary_id, const Function<dim> *> boundary_functions;
 
-    Functions::ConstantFunction<dim> function_zero(0.0);
+    //Functions::ConstantFunction<dim> function_zero(1.0);
+    FunctionU<dim> e{};
+    e.set_time(time);
 
-    boundary_functions[0] = &function_zero;
-    boundary_functions[1] = &function_zero;
-    boundary_functions[2] = &function_zero;
-    boundary_functions[3] = &function_zero;
+    boundary_functions[0] = &e;
+    boundary_functions[1] = &e;
+    boundary_functions[2] = &e;
+    boundary_functions[3] = &e;
 
     // interpolate_boundary_values fills the boundary_values map.
     VectorTools::interpolate_boundary_values(dof_handler, boundary_functions, boundary_values);
@@ -262,8 +262,8 @@ void WaveSolver::solve() {
 
     VectorTools::interpolate(dof_handler, u_1, solution_owned);
     // solution += deltat * u_1 + u_0
-    solution_owned.sadd(deltat, solution_owned);
-    solution_owned.add(1, solution_owned_old);
+    solution_owned.sadd(deltat, solution_owned_old);
+    //solution_owned.add(1, solution_owned_old);
 
     solution = solution_owned;
     output(1);

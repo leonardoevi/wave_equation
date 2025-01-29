@@ -93,9 +93,6 @@ protected:
 
   // Problem definition. ///////////////////////////////////////////////////////
 
-  // mu coefficient.
-  FunctionMu<dim> mu;
-
   // Forcing term.
   ForcingTerm<dim> forcing_term;
 

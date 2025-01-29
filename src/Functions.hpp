@@ -4,26 +4,20 @@
 #include <deal.II/base/function.h>
 
 using namespace dealii;
-
-template<int dim>
-class FunctionMu : public Function<dim>
-{
-public:
-     double value(const Point<dim> & /*p*/, const unsigned int /*component*/ = 0) const override {
-        return 1.0;
-    }
-};
+using namespace std;
 
 template<int dim>
 class ForcingTerm : public Function<dim>
 {
 public:
     double value(const Point<dim> & p, const unsigned int /*component*/ = 0) const override {
-        double x = p[0], y = p[1];
-        if ((x-0.5)*(x-0.5) + (y-0.5)*(y-0.5) < 0.001)
-            return 6*std::sin(8*M_PI*this->get_time());
+        const double  x = p[0], t = this->get_time();
 
-        return 0.0;
+        const double dtt = sin(t-x);
+        const double dxx = sin(t-x);
+        //const double dyy = y*y*sin(t-sqrt(x*x+y*y))/(x*x+y*y) + x*x*cos(t-sqrt(x*x+y*y))/pow(x*x+y*y,1.5);
+
+        return dtt - dxx;
     }
 };
 
@@ -31,17 +25,10 @@ template<int dim>
 class FunctionU0 : public Function<dim>
 {
 public:
-    double value(const Point<dim> & /*p*/, const unsigned int /*component*/ = 0) const override {
-        return 0.0;
-        /*
-        double x = p[0], y = p[1];
-        if (x <= 0.5)
-          return std::sin(6.283185 * x) * std::sin(6.283185 * x) * std::sin(6.283185 / 2.0 * y) * std::sin(6.283185 / 2.0 * y);
-        else
-          return 0.0;
-          */
-        //return std::sin(3.14 * 2 * p[0]) * std::sin(3.14 * 2 * p[1]);
-        //return exp(-30*(p[0] - 0.5)*(p[0] - 0.5) - 30 * (p[1] - 0.5)*(p[1] - 0.5));
+    double value(const Point<dim> & p, const unsigned int /*component*/ = 0) const override {
+        const double  x = p[0];
+
+        return sin(x);
     }
 };
 
@@ -50,8 +37,20 @@ template<int dim>
 class FunctionU1 : public Function<dim>
 {
 public:
-    double value(const Point<dim> & /*p*/, const unsigned int /*component*/ = 0) const override {
-        return 0.0;
+    double value(const Point<dim> & p, const unsigned int /*component*/ = 0) const override {
+        const double  x = p[0];
+        return -cos(x);
+    }
+};
+
+template<int dim>
+class FunctionU : public Function<dim>
+{
+public:
+    double value(const Point<dim> & p, const unsigned int /*component*/ = 0) const override {
+        const double  x = p[0], t = this->get_time();
+
+        return sin(x - t);
     }
 };
 

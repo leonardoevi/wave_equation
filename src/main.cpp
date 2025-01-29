@@ -6,8 +6,8 @@ int main(int argc, char *argv[]) {
     const std::string  mesh_file_name = "../mesh/mesh-square-h0.012500.msh";
 
     constexpr unsigned int degree = 1;
-    constexpr double T            = 2;
-    constexpr double deltat       = 0.005;
+    constexpr double T            = 10;
+    constexpr double deltat       = 0.01;
 
     WaveSolver problem(mesh_file_name, degree, T, deltat);
     problem.setup();
