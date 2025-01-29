@@ -1,7 +1,17 @@
-#include <iostream>
-#include <deal.II/gmsh/utilities.h>
+#include "WaveSolver.hpp"
 
-int main() {
-    std::cout << "Hello, World!\n";
-    std::cout << "Successfully included dealii!\n";
+int main(int argc, char *argv[]) {
+    Utilities::MPI::MPI_InitFinalize mpi_init(argc, argv);
+
+    const std::string  mesh_file_name = "../mesh/mesh-square-h0.012500.msh";
+
+    constexpr unsigned int degree = 1;
+    constexpr double T            = 2;
+    constexpr double deltat       = 0.005;
+
+    WaveSolver problem(mesh_file_name, degree, T, deltat);
+    problem.setup();
+    problem.solve();
+
+    return 0;
 }

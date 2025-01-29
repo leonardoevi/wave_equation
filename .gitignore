@@ -34,5 +34,6 @@
 *.app
 
 build
+mesh
 cmake-build-debug
 .idea
