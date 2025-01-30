@@ -75,10 +75,6 @@ protected:
   void
   assemble_rhs(const double &time);
 
-  // Solve the problem for one time step.
-  void
-  solve_time_step();
-
   // Output.
   void
   output(const unsigned int &time_step) const;
@@ -101,7 +97,7 @@ protected:
 
   // Initial condition.
   FunctionU0<dim> u_0;
-  FunctionU1<dim> u_1;
+  FunctionV0<dim> v_0;
 
   // Final time.
   const double T;
@@ -144,23 +140,24 @@ protected:
   // Stiffness matrix A.
   TrilinosWrappers::SparseMatrix stiffness_matrix;
 
-  // Matrix on the left-hand side (M / deltat^2 + A).
   TrilinosWrappers::SparseMatrix lhs_matrix;
 
-  // Matrix on the right-hand side (M / deltat^2).
-  TrilinosWrappers::SparseMatrix rhs_matrix;
-
   // Right-hand side vector in the linear system.
-  TrilinosWrappers::MPI::Vector system_rhs;
-
-  // System solution (without ghost elements).
-  TrilinosWrappers::MPI::Vector solution_owned;
+  TrilinosWrappers::MPI::Vector f_k;
+  TrilinosWrappers::MPI::Vector f_k_old;
 
   // System solution (including ghost elements).
   TrilinosWrappers::MPI::Vector solution;
 
-  // old solution
-  TrilinosWrappers::MPI::Vector solution_owned_old;
+  // System solution (without ghost elements).
+  TrilinosWrappers::MPI::Vector u_owned;
+  TrilinosWrappers::MPI::Vector u_old_owned;
+
+  TrilinosWrappers::MPI::Vector v_owned;
+  TrilinosWrappers::MPI::Vector v_old_owned;
+
+  TrilinosWrappers::MPI::Vector tmp;
+  TrilinosWrappers::MPI::Vector b;
 };
 
 #endif

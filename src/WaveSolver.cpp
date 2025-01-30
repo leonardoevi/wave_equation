@@ -68,14 +68,21 @@ void WaveSolver::setup() {
     mass_matrix.reinit(sparsity);
     stiffness_matrix.reinit(sparsity);
     lhs_matrix.reinit(sparsity);
-    rhs_matrix.reinit(sparsity);
 
     // Initializing the system right-hand side
-    system_rhs.reinit(locally_owned_dofs, MPI_COMM_WORLD);
+    f_k.reinit(locally_owned_dofs, MPI_COMM_WORLD);
+    f_k_old.reinit(locally_owned_dofs, MPI_COMM_WORLD);
 
     // Initializing the solution vector
-    solution_owned.reinit(locally_owned_dofs, MPI_COMM_WORLD);
-    solution_owned_old.reinit(locally_owned_dofs, MPI_COMM_WORLD);
+    u_owned.reinit(locally_owned_dofs, MPI_COMM_WORLD);
+    u_old_owned.reinit(locally_owned_dofs, MPI_COMM_WORLD);
+
+    v_owned.reinit(locally_owned_dofs, MPI_COMM_WORLD);
+    v_old_owned.reinit(locally_owned_dofs, MPI_COMM_WORLD);
+
+    tmp.reinit(locally_owned_dofs, MPI_COMM_WORLD);
+    b.reinit(locally_owned_dofs, MPI_COMM_WORLD);
+
     solution.reinit(locally_owned_dofs, locally_relevant_dofs, MPI_COMM_WORLD);
   }
 }
@@ -112,8 +119,7 @@ void WaveSolver::assemble_matrices() {
       for (unsigned int i = 0; i < dofs_per_cell; ++i) {
         for (unsigned int j = 0; j < dofs_per_cell; ++j) {
           cell_mass_matrix(i, j) += fe_values.shape_value(i, q) *
-                                    fe_values.shape_value(j, q) /
-                                    (deltat * deltat) * fe_values.JxW(q);
+                                    fe_values.shape_value(j, q) * fe_values.JxW(q);
 
           cell_stiffness_matrix(i, j) += fe_values.shape_grad(i, q) *
                                          fe_values.shape_grad(j, q) * fe_values.JxW(q);
@@ -129,13 +135,6 @@ void WaveSolver::assemble_matrices() {
 
   mass_matrix.compress(VectorOperation::add);
   stiffness_matrix.compress(VectorOperation::add);
-
-  // We build the matrix on the left-hand side of the algebraic problem (the one that we'll invert at each timestep).
-  lhs_matrix.copy_from(mass_matrix);
-  lhs_matrix.add(1, stiffness_matrix);
-
-  // We build the matrix on the right-hand side (the one that multiplies the old solution un).
-  rhs_matrix.copy_from(mass_matrix);
 }
 
 void WaveSolver::assemble_rhs(const double &time) {
@@ -144,11 +143,13 @@ void WaveSolver::assemble_rhs(const double &time) {
 
   FEValues<dim> fe_values(*fe, *quadrature, update_values | update_quadrature_points | update_JxW_values);
 
-  Vector<double> cell_rhs(dofs_per_cell);
+  Vector<double> cell_f_k(dofs_per_cell);
+  Vector<double> cell_f_k_old(dofs_per_cell);
 
   std::vector<types::global_dof_index> dof_indices(dofs_per_cell);
 
-  system_rhs = 0.0;
+  f_k = 0.0;
+  f_k_old = 0.0;
 
   for (const auto &cell : dof_handler.active_cell_iterators()) {
     if (!cell->is_locally_owned())
@@ -156,37 +157,54 @@ void WaveSolver::assemble_rhs(const double &time) {
 
     fe_values.reinit(cell);
 
-    cell_rhs = 0.0;
+    cell_f_k = 0.0;
+    cell_f_k_old = 0.0;
 
     for (unsigned int q = 0; q < n_q; ++q) {
       // Compute f(tn+1)
       forcing_term.set_time(time);
-      const double f_new_loc = forcing_term.value(fe_values.quadrature_point(q));
+      const double f_loc = forcing_term.value(fe_values.quadrature_point(q));
 
       // Compute f(tn)
       forcing_term.set_time(time - deltat);
-      const double f_old_loc = forcing_term.value(fe_values.quadrature_point(q));
+      const double f_loc_old = forcing_term.value(fe_values.quadrature_point(q));
 
       for (unsigned int i = 0; i < dofs_per_cell; ++i) {
-        // remove theta from here
-        int theta = 0;
-        cell_rhs(i) += (theta * f_new_loc + (1.0 - theta) * f_old_loc) * fe_values.shape_value(i, q) * fe_values.JxW(q);
+        cell_f_k_old(i) += f_loc_old * fe_values.shape_value(i, q) * fe_values.JxW(q);
+        cell_f_k(i) += f_loc * fe_values.shape_value(i, q) * fe_values.JxW(q);
       }
     }
 
     cell->get_dof_indices(dof_indices);
-    system_rhs.add(dof_indices, cell_rhs);
+    f_k.add(dof_indices, cell_f_k);
+    f_k_old.add(dof_indices, cell_f_k_old);
   }
 
-  system_rhs.compress(VectorOperation::add);
+  f_k.compress(VectorOperation::add);
+  f_k_old.compress(VectorOperation::add);
 
-  // Add the term that comes from the old solution. (F + M/deltat^2 * (2 * u_k-1 - u_k-2) )
-  // 2 * solution_owned - solution_owned_old
-  solution_owned.sadd(2.0, -1.0, solution_owned_old);
+  // compute system rhs for u_n+1 computation
+  {
+    b = 0.0;
 
-  rhs_matrix.vmult_add(system_rhs, solution_owned);
+    // b = M * u_n
+    mass_matrix.vmult_add(b, u_old_owned);
+
+    // tmp = A * u_n
+    stiffness_matrix.vmult(tmp, u_old_owned);
+    tmp *= (-deltat * deltat / 2.0);
+
+    b.add(tmp);
+
+    // tmp = M * v_n
+    mass_matrix.vmult(tmp, v_old_owned);
+    b.add(deltat, tmp);
+
+    b.add(deltat*deltat/2.0, f_k_old);
+  }
 
   // Boundary conditions.
+  lhs_matrix.copy_from(mass_matrix);
   {
     // We construct a map that stores, for each DoF corresponding to a
     // Dirichlet condition, the corresponding value. E.g., if the Dirichlet
@@ -212,26 +230,85 @@ void WaveSolver::assemble_rhs(const double &time) {
     // Finally, we modify the linear system to apply the boundary
     // conditions. This replaces the equations for the boundary DoFs with
     // the corresponding u_i = 0 equations.
-    MatrixTools::apply_boundary_values(boundary_values, lhs_matrix, solution, system_rhs, true);
+    MatrixTools::apply_boundary_values(boundary_values, lhs_matrix, u_owned, b, true);
   }
-}
 
-void WaveSolver::solve_time_step() {
-  SolverControl solver_control(1000, 1e-12 * system_rhs.l2_norm());
+  // solve for u_n+1 (u_owned)
+  {
+    SolverControl solver_control(1000, 1e-8 * b.l2_norm());
 
-  SolverCG<TrilinosWrappers::MPI::Vector> solver(solver_control);
-  TrilinosWrappers::PreconditionSSOR      preconditioner;
-  preconditioner.initialize(lhs_matrix, TrilinosWrappers::PreconditionSSOR::AdditionalData(1.0));
+    SolverCG<TrilinosWrappers::MPI::Vector> solver(solver_control);
+    TrilinosWrappers::PreconditionSSOR      preconditioner;
+    preconditioner.initialize(lhs_matrix, TrilinosWrappers::PreconditionSSOR::AdditionalData(1.0));
 
-  solution_owned_old = solution;
+    solver.solve(lhs_matrix, u_owned, b, preconditioner);
+    pcout << "  " << solver_control.last_step() << " CG iterations" << std::endl;
+  }
 
-  solver.solve(lhs_matrix, solution_owned, system_rhs, preconditioner);
-  pcout << "  " << solver_control.last_step() << " CG iterations" << std::endl;
+  // compute system rhs for v_n+1 computation
+  {
+    b = 0.0;
 
-  solution = solution_owned;
+    mass_matrix.vmult(b, v_old_owned);
+
+    tmp = u_old_owned;
+    tmp.add(u_owned);
+    tmp *= (-deltat/2.0);
+    stiffness_matrix.vmult_add(b, tmp);
+
+    tmp = f_k_old;
+    tmp.add(f_k);
+    tmp *= (deltat/2.0);
+    b.add(tmp);
+  }
+
+  // boundary condition on vn+1
+  lhs_matrix.copy_from(mass_matrix);
+  {
+    // We construct a map that stores, for each DoF corresponding to a
+    // Dirichlet condition, the corresponding value. E.g., if the Dirichlet
+    // condition is u_i = b, the map will contain the pair (i, b).
+    std::map<types::global_dof_index, double> boundary_values;
+
+    // Then, we build a map that, for each boundary tag, stores the
+    // corresponding boundary function.
+    std::map<types::boundary_id, const Function<dim> *> boundary_functions;
+
+    //Functions::ConstantFunction<dim> function_zero(1.0);
+    FunctiondU<dim> e{};
+    e.set_time(time);
+
+    boundary_functions[0] = &e;
+    boundary_functions[1] = &e;
+    boundary_functions[2] = &e;
+    boundary_functions[3] = &e;
+
+    // interpolate_boundary_values fills the boundary_values map.
+    VectorTools::interpolate_boundary_values(dof_handler, boundary_functions, boundary_values);
+
+    // Finally, we modify the linear system to apply the boundary
+    // conditions. This replaces the equations for the boundary DoFs with
+    // the corresponding u_i = 0 equations.
+    MatrixTools::apply_boundary_values(boundary_values, lhs_matrix, v_owned, b, true);
+  }
+
+  // solve for v_n+1 (v_owned)
+  {
+    SolverControl solver_control(1000, 1e-8 * b.l2_norm());
+
+    SolverCG<TrilinosWrappers::MPI::Vector> solver(solver_control);
+    TrilinosWrappers::PreconditionSSOR      preconditioner;
+    preconditioner.initialize(lhs_matrix, TrilinosWrappers::PreconditionSSOR::AdditionalData(1.0));
+
+    solver.solve(lhs_matrix, v_owned, b, preconditioner);
+    pcout << "  " << solver_control.last_step() << " CG iterations" << std::endl;
+  }
+
+  solution = u_owned;
 }
 
 void WaveSolver::output(const unsigned int &time_step) const {
+
   DataOut<dim> data_out;
   data_out.add_data_vector(dof_handler, solution, "u");
 
@@ -255,15 +332,11 @@ void WaveSolver::solve() {
   {
     pcout << "Applying the initial condition" << std::endl;
 
-    VectorTools::interpolate(dof_handler, u_0, solution_owned);
-    solution = solution_owned;
+    VectorTools::interpolate(dof_handler, u_0, u_old_owned);
+    VectorTools::interpolate(dof_handler, v_0, v_old_owned);
 
-    // Output the initial solution.
+    solution = u_old_owned;
     output(0);
-
-    VectorTools::interpolate(dof_handler, u_1, solution_owned_old);
-    // u_-1 += -deltat * u_1 + u_0
-    solution_owned_old.sadd(-deltat, 1.0, solution_owned);
 
     pcout << "-----------------------------------------------" << std::endl;
   }
@@ -278,8 +351,10 @@ void WaveSolver::solve() {
     pcout << "n = " << std::setw(3) << time_step << ", t = " << std::setw(5) << time << ":" << std::flush;
 
     assemble_rhs(time);
-    solve_time_step();
     output(time_step);
+
+    u_old_owned = u_owned;
+    v_old_owned = v_owned;
   }
 
   endT = time;
