@@ -63,6 +63,9 @@ public:
   void
   solve();
 
+  double
+  compute_error(const VectorTools::NormType &norm_type) const;
+
 protected:
   // Assemble the mass and stiffness matrices.
   void
@@ -113,6 +116,9 @@ protected:
 
   // Time step.
   const double deltat;
+
+  // Final simul time
+  double endT = 0;
 
   // Mesh.
   parallel::fullydistributed::Triangulation<dim> mesh;

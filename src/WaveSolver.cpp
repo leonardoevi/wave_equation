@@ -1,4 +1,5 @@
 #include "WaveSolver.hpp"
+#include <deal.II/fe/mapping_fe.h>
 
 void WaveSolver::setup() {
   // Create the mesh.
@@ -168,7 +169,7 @@ void WaveSolver::assemble_rhs(const double &time) {
 
       for (unsigned int i = 0; i < dofs_per_cell; ++i) {
         // remove theta from here
-        int theta = 1;
+        int theta = 0;
         cell_rhs(i) += (theta * f_new_loc + (1.0 - theta) * f_old_loc) * fe_values.shape_value(i, q) * fe_values.JxW(q);
       }
     }
@@ -254,25 +255,21 @@ void WaveSolver::solve() {
   {
     pcout << "Applying the initial condition" << std::endl;
 
-    VectorTools::interpolate(dof_handler, u_0, solution_owned_old);
-    solution = solution_owned_old;
+    VectorTools::interpolate(dof_handler, u_0, solution_owned);
+    solution = solution_owned;
 
     // Output the initial solution.
     output(0);
 
-    VectorTools::interpolate(dof_handler, u_1, solution_owned);
-    // solution += deltat * u_1 + u_0
-    solution_owned.sadd(deltat, solution_owned_old);
-    //solution_owned.add(1, solution_owned_old);
-
-    solution = solution_owned;
-    output(1);
+    VectorTools::interpolate(dof_handler, u_1, solution_owned_old);
+    // u_-1 += -deltat * u_1 + u_0
+    solution_owned_old.sadd(-deltat, 1.0, solution_owned);
 
     pcout << "-----------------------------------------------" << std::endl;
   }
 
-  unsigned int time_step = 0 + 1;
-  double       time      = 0 + deltat;
+  unsigned int time_step = 0;
+  double       time      = 0;
 
   while (time < T) {
     time += deltat;
@@ -284,4 +281,35 @@ void WaveSolver::solve() {
     solve_time_step();
     output(time_step);
   }
+
+  endT = time;
+}
+
+double WaveSolver::compute_error(const VectorTools::NormType &norm_type) const {
+  FE_SimplexP<dim> fe_linear(1);
+  MappingFE        mapping(fe_linear);
+
+  // The error is an integral, and we approximate that integral using a
+  // quadrature formula. To make sure we are accurate enough, we use a
+  // quadrature formula with one node more than what we used in assembly.
+  const QGaussSimplex<dim> quadrature_error(r + 2);
+
+  FunctionU<dim> exact_sol{};
+  exact_sol.set_time(endT);
+
+  // First we compute the norm on each element, and store it in a vector.
+  Vector<double> error_per_cell(mesh.n_active_cells());
+  VectorTools::integrate_difference(mapping,
+                                    dof_handler,
+                                    solution,
+                                    exact_sol,
+                                    error_per_cell,
+                                    quadrature_error,
+                                    norm_type);
+
+  // Then, we add out all the cells.
+  const double error =
+    VectorTools::compute_global_error(mesh, error_per_cell, norm_type);
+
+  return error;
 }

@@ -11,13 +11,12 @@ class ForcingTerm : public Function<dim>
 {
 public:
     double value(const Point<dim> & p, const unsigned int /*component*/ = 0) const override {
-        const double  x = p[0], y = p[1], t = this->get_time();
+        const double  x = p[0], t = this->get_time();
 
-        const double dtt = sin(-t + sqrt(x*x + y*y));
-        const double dxx = x*x*sin(t-sqrt(x*x+y*y))/(x*x+y*y) + y*y*cos(t-sqrt(x*x+y*y))/pow(x*x+y*y,1.5);
-        const double dyy = y*y*sin(t-sqrt(x*x+y*y))/(x*x+y*y) + x*x*cos(t-sqrt(x*x+y*y))/pow(x*x+y*y,1.5);
+        const double dtt = sin(t-x);
+        const double dxx = sin(t-x);
 
-        return dtt - dxx - dyy;
+        return dtt - dxx;
     }
 };
 
@@ -26,9 +25,9 @@ class FunctionU0 : public Function<dim>
 {
 public:
     double value(const Point<dim> & p, const unsigned int /*component*/ = 0) const override {
-        const double  x = p[0], y = p[1];
+        const double  x = p[0];
 
-        return sin(sqrt(x*x+y*y));
+        return sin(x);
     }
 };
 
@@ -38,8 +37,8 @@ class FunctionU1 : public Function<dim>
 {
 public:
     double value(const Point<dim> & p, const unsigned int /*component*/ = 0) const override {
-        const double  x = p[0], y = p[1];
-        return -cos(sqrt(x*x+y*y));
+        const double  x = p[0];
+        return -cos(-x);
     }
 };
 
@@ -48,9 +47,9 @@ class FunctionU : public Function<dim>
 {
 public:
     double value(const Point<dim> & p, const unsigned int /*component*/ = 0) const override {
-        const double  x = p[0], y = p[1], t = this->get_time();
+        const double  x = p[0], t = this->get_time();
 
-        return sin(sqrt(x*x + y*y) - t);
+        return sin(x - t);
     }
 };
 
