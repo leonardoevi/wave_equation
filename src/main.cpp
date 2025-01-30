@@ -1,7 +1,7 @@
 #include "WaveSolver.hpp"
 #include <deal.II/base/convergence_table.h>
 
-#define CONVERGENCE false
+#define CONVERGENCE true
 
 int main(int argc, char *argv[]) {
     Utilities::MPI::MPI_InitFinalize mpi_init(argc, argv);
@@ -58,8 +58,8 @@ int main(int argc, char *argv[]) {
     const std::string  mesh_file_name = "../mesh/squarec0_0500.msh";
 
     constexpr unsigned int degree = 1;
-    constexpr double T            = 10;
-    constexpr double deltat       = 0.1;
+    constexpr double T            = 1;
+    constexpr double deltat       = 0.01;
 
     WaveSolver problem(mesh_file_name, degree, T, deltat);
     problem.setup();
