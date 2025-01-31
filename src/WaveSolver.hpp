@@ -24,6 +24,9 @@
 #include <deal.II/numerics/data_out.h>
 #include <deal.II/numerics/matrix_tools.h>
 #include <deal.II/numerics/vector_tools.h>
+#include <deal.II/grid/grid_generator.h>
+#include <deal.II/grid/grid_out.h>
+#include <deal.II/grid/tria.h>
 
 #include "Functions.hpp"
 
@@ -31,13 +34,14 @@
 #include <iostream>
 #include<cmath>
 
+
 using namespace dealii;
 
 class WaveSolver
 {
 public:
   // Physical dimension (1D, 2D, 3D)
-  static constexpr unsigned int dim = 2;
+  static constexpr unsigned int dim = DIM;
 
   // Constructor. We provide the final time, time step Delta t and theta method
   // parameter as constructor arguments.

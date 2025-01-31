@@ -3,25 +3,41 @@
 
 void WaveSolver::setup() {
   // Create the mesh.
+#if DIM == 1
   {
-    pcout << "Initializing the mesh" << std::endl;
+    std::cout << "Initializing the mesh" << std::endl;
+    GridGenerator::subdivided_hyper_cube(mesh, 500 , 0.0, 10.0, true);
+    std::cout << "  Number of elements = " << mesh.n_active_cells()
+              << std::endl;
 
-    Triangulation<dim> mesh_serial;
-
-    GridIn<dim> grid_in;
-    grid_in.attach_triangulation(mesh_serial);
-
-    std::ifstream grid_in_file(mesh_file_name);
-    grid_in.read_msh(grid_in_file);
-
-    GridTools::partition_triangulation(mpi_size, mesh_serial);
-    const auto construction_data = TriangulationDescription::Utilities::
-      create_description_from_triangulation(mesh_serial, MPI_COMM_WORLD);
-    mesh.create_triangulation(construction_data);
-
-    pcout << "  Number of elements = " << mesh.n_global_active_cells()
-          << std::endl;
+    // Write the mesh to file.
+    const std::string mesh_file_name = "mesh-" + std::to_string(500) + ".vtk";
+    GridOut           grid_out;
+    std::ofstream     grid_out_file(mesh_file_name);
+    grid_out.write_vtk(mesh, grid_out_file);
+    std::cout << "  Mesh saved to " << mesh_file_name << std::endl;
   }
+#else
+{
+  pcout << "Initializing the mesh" << std::endl;
+
+  Triangulation<dim> mesh_serial;
+
+  GridIn<dim> grid_in;
+  grid_in.attach_triangulation(mesh_serial);
+
+  std::ifstream grid_in_file(mesh_file_name);
+  grid_in.read_msh(grid_in_file);
+
+  GridTools::partition_triangulation(mpi_size, mesh_serial);
+  const auto construction_data = TriangulationDescription::Utilities::
+    create_description_from_triangulation(mesh_serial, MPI_COMM_WORLD);
+  mesh.create_triangulation(construction_data);
+
+  pcout << "  Number of elements = " << mesh.n_global_active_cells()
+        << std::endl;
+}
+#endif
 
   pcout << "-----------------------------------------------" << std::endl;
 
@@ -215,10 +231,11 @@ void WaveSolver::assemble_rhs(const double &time) {
     // corresponding boundary function.
     std::map<types::boundary_id, const Function<dim> *> boundary_functions;
 
-    //Functions::ConstantFunction<dim> function_zero(1.0);
+    Functions::ConstantFunction<dim> function_zero(0.0);
     FunctionU<dim> e{};
     e.set_time(time);
 
+    // TODO change it when changing dimension/mesh. Now it works for 2D square centered mesh
     boundary_functions[0] = &e;
     boundary_functions[1] = &e;
     boundary_functions[2] = &e;
@@ -242,7 +259,7 @@ void WaveSolver::assemble_rhs(const double &time) {
     preconditioner.initialize(lhs_matrix, TrilinosWrappers::PreconditionSSOR::AdditionalData(1.0));
 
     solver.solve(lhs_matrix, u_owned, b, preconditioner);
-    pcout << "  " << solver_control.last_step() << " CG iterations" << std::endl;
+    //pcout << "  " << solver_control.last_step() << " CG iterations" << std::endl;
   }
 
   // compute system rhs for v_n+1 computation
@@ -301,7 +318,7 @@ void WaveSolver::assemble_rhs(const double &time) {
     preconditioner.initialize(lhs_matrix, TrilinosWrappers::PreconditionSSOR::AdditionalData(1.0));
 
     solver.solve(lhs_matrix, v_owned, b, preconditioner);
-    pcout << "  " << solver_control.last_step() << " CG iterations" << std::endl;
+    // pcout << "  " << solver_control.last_step() << " CG iterations" << std::endl;
   }
 
   solution = u_owned;
@@ -348,10 +365,10 @@ void WaveSolver::solve() {
     time += deltat;
     ++time_step;
 
-    pcout << "n = " << std::setw(3) << time_step << ", t = " << std::setw(5) << time << ":" << std::flush;
+    if (time_step % static_cast<int>((T / deltat) * 0.1) == 0) pcout << "n = " << std::setw(3) << time_step << ", t = " << std::setw(5) << time << std::endl;
 
     assemble_rhs(time);
-    output(time_step);
+    if (time_step % SKIPS == 0) output(time_step);
 
     u_old_owned = u_owned;
     v_old_owned = v_owned;
