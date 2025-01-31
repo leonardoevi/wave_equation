@@ -75,9 +75,15 @@ protected:
   void
   assemble_matrices();
 
-  // Assemble the right-hand side of the problem.
+  // Compute F_k and F_k+1.
   void
-  assemble_rhs(const double &time);
+  compute_F(const double &time);
+
+  void
+  solve_time_step_BE(const double &time);
+
+  void
+  solve_time_step_LF(const double &time);
 
   // Output.
   void

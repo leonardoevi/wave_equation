@@ -153,7 +153,7 @@ void WaveSolver::assemble_matrices() {
   stiffness_matrix.compress(VectorOperation::add);
 }
 
-void WaveSolver::assemble_rhs(const double &time) {
+void WaveSolver::compute_F(const double &time) {
   const unsigned int dofs_per_cell = fe->dofs_per_cell;
   const unsigned int n_q           = quadrature->size();
 
@@ -198,7 +198,9 @@ void WaveSolver::assemble_rhs(const double &time) {
 
   f_k.compress(VectorOperation::add);
   f_k_old.compress(VectorOperation::add);
+}
 
+void WaveSolver::solve_time_step_BE(const double &time) {
   // compute system rhs for u_n+1 computation
   {
     b = 0.0;
@@ -324,6 +326,132 @@ void WaveSolver::assemble_rhs(const double &time) {
   solution = u_owned;
 }
 
+void WaveSolver::solve_time_step_LF(const double &time) {
+  // compute system rhs for u_n+1 computation
+  {
+    b = 0.0;
+
+    // b = M * u_n
+    mass_matrix.vmult_add(b, u_old_owned);
+
+    // tmp = A * u_n
+    stiffness_matrix.vmult(tmp, u_old_owned);
+    tmp *= (-deltat * deltat / 2.0);
+
+    b.add(tmp);
+
+    // tmp = M * v_n
+    mass_matrix.vmult(tmp, v_old_owned);
+    b.add(deltat, tmp);
+
+    b.add(deltat*deltat/2.0, f_k_old);
+  }
+
+  // Boundary conditions.
+  lhs_matrix.copy_from(mass_matrix);
+  {
+    // We construct a map that stores, for each DoF corresponding to a
+    // Dirichlet condition, the corresponding value. E.g., if the Dirichlet
+    // condition is u_i = b, the map will contain the pair (i, b).
+    std::map<types::global_dof_index, double> boundary_values;
+
+    // Then, we build a map that, for each boundary tag, stores the
+    // corresponding boundary function.
+    std::map<types::boundary_id, const Function<dim> *> boundary_functions;
+
+    Functions::ZeroFunction<dim> function_zero;
+    FunctionU<dim> e{};
+    e.set_time(time);
+
+    // TODO change it when changing dimension/mesh. Now it works for 2D square centered mesh
+    boundary_functions[0] = &e;
+    boundary_functions[1] = &function_zero;
+    //boundary_functions[2] = &e;
+    //boundary_functions[3] = &e;
+
+    // interpolate_boundary_values fills the boundary_values map.
+    VectorTools::interpolate_boundary_values(dof_handler, boundary_functions, boundary_values);
+
+    // Finally, we modify the linear system to apply the boundary
+    // conditions. This replaces the equations for the boundary DoFs with
+    // the corresponding u_i = 0 equations.
+    MatrixTools::apply_boundary_values(boundary_values, lhs_matrix, u_owned, b, true);
+  }
+
+  // solve for u_n+1 (u_owned)
+  {
+    SolverControl solver_control(1000, 1e-8 * b.l2_norm());
+
+    SolverCG<TrilinosWrappers::MPI::Vector> solver(solver_control);
+    TrilinosWrappers::PreconditionSSOR      preconditioner;
+    preconditioner.initialize(lhs_matrix, TrilinosWrappers::PreconditionSSOR::AdditionalData(1.0));
+
+    solver.solve(lhs_matrix, u_owned, b, preconditioner);
+    //pcout << "  " << solver_control.last_step() << " CG iterations" << std::endl;
+  }
+
+  // compute system rhs for v_n+1 computation
+  {
+    b = 0.0;
+
+    mass_matrix.vmult(b, v_old_owned);
+
+    tmp = u_old_owned;
+    tmp.add(u_owned);
+    tmp *= (-deltat/2.0);
+    stiffness_matrix.vmult_add(b, tmp);
+
+    tmp = f_k_old;
+    tmp.add(f_k);
+    tmp *= (deltat/2.0);
+    b.add(tmp);
+  }
+
+  // boundary condition on vn+1
+  lhs_matrix.copy_from(mass_matrix);
+  /*{
+    // We construct a map that stores, for each DoF corresponding to a
+    // Dirichlet condition, the corresponding value. E.g., if the Dirichlet
+    // condition is u_i = b, the map will contain the pair (i, b).
+    std::map<types::global_dof_index, double> boundary_values;
+
+    // Then, we build a map that, for each boundary tag, stores the
+    // corresponding boundary function.
+    std::map<types::boundary_id, const Function<dim> *> boundary_functions;
+
+    //Functions::ConstantFunction<dim> function_zero(1.0);
+    FunctiondU<dim> e{};
+    e.set_time(time);
+
+    boundary_functions[0] = &e;
+    boundary_functions[1] = &e;
+    boundary_functions[2] = &e;
+    boundary_functions[3] = &e;
+
+    // interpolate_boundary_values fills the boundary_values map.
+    VectorTools::interpolate_boundary_values(dof_handler, boundary_functions, boundary_values);
+
+    // Finally, we modify the linear system to apply the boundary
+    // conditions. This replaces the equations for the boundary DoFs with
+    // the corresponding u_i = 0 equations.
+    MatrixTools::apply_boundary_values(boundary_values, lhs_matrix, v_owned, b, true);
+  }*/
+
+  // solve for v_n+1 (v_owned)
+  {
+    SolverControl solver_control(1000, 1e-8 * b.l2_norm());
+
+    SolverCG<TrilinosWrappers::MPI::Vector> solver(solver_control);
+    TrilinosWrappers::PreconditionSSOR      preconditioner;
+    preconditioner.initialize(lhs_matrix, TrilinosWrappers::PreconditionSSOR::AdditionalData(1.0));
+
+    solver.solve(lhs_matrix, v_owned, b, preconditioner);
+    //pcout << "  " << solver_control.last_step() << " CG iterations" << std::endl;
+  }
+
+  solution = u_owned;
+}
+
 void WaveSolver::output(const unsigned int &time_step) const {
 
   DataOut<dim> data_out;
@@ -367,7 +495,13 @@ void WaveSolver::solve() {
 
     if (time_step % static_cast<int>((T / deltat) * 0.1) == 0) pcout << "n = " << std::setw(3) << time_step << ", t = " << std::setw(5) << time << std::endl;
 
-    assemble_rhs(time);
+    compute_F(time);
+    #if LEAP_FROG
+    solve_time_step_LF(time);
+    #else
+    solve_time_step_BE(time);
+    #endif
+
     if (time_step % SKIPS == 0) output(time_step);
 
     u_old_owned = u_owned;
