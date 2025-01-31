@@ -35,5 +35,6 @@
 
 build
 mesh
+!mesh/squarec.geo
 cmake-build-debug
 .idea

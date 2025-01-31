@@ -6,7 +6,7 @@ void WaveSolver::setup() {
 #if DIM == 1
   {
     std::cout << "Initializing the mesh" << std::endl;
-    GridGenerator::subdivided_hyper_cube(mesh, 500 , 0.0, 10.0, true);
+    GridGenerator::subdivided_hyper_cube(mesh, 500 , 0.0, 100.0, true);
     std::cout << "  Number of elements = " << mesh.n_active_cells()
               << std::endl;
 
@@ -206,21 +206,20 @@ void WaveSolver::assemble_rhs(const double &time) {
     // b = M * u_n
     mass_matrix.vmult_add(b, u_old_owned);
 
-    // tmp = A * u_n
-    stiffness_matrix.vmult(tmp, u_old_owned);
-    tmp *= (-deltat * deltat / 2.0);
+    // tmp = delta_t^2 * F_k+1
+    tmp = f_k;
+    tmp *= (deltat * deltat);
 
     b.add(tmp);
 
-    // tmp = M * v_n
+    // tmp = delta_t * M * v_n
     mass_matrix.vmult(tmp, v_old_owned);
     b.add(deltat, tmp);
-
-    b.add(deltat*deltat/2.0, f_k_old);
   }
 
-  // Boundary conditions.
   lhs_matrix.copy_from(mass_matrix);
+  lhs_matrix.add(deltat*deltat, stiffness_matrix);
+  // Boundary conditions.
   {
     // We construct a map that stores, for each DoF corresponding to a
     // Dirichlet condition, the corresponding value. E.g., if the Dirichlet
@@ -231,15 +230,15 @@ void WaveSolver::assemble_rhs(const double &time) {
     // corresponding boundary function.
     std::map<types::boundary_id, const Function<dim> *> boundary_functions;
 
-    Functions::ConstantFunction<dim> function_zero(0.0);
+    Functions::ZeroFunction<dim> function_zero;
     FunctionU<dim> e{};
     e.set_time(time);
 
     // TODO change it when changing dimension/mesh. Now it works for 2D square centered mesh
     boundary_functions[0] = &e;
-    boundary_functions[1] = &e;
-    boundary_functions[2] = &e;
-    boundary_functions[3] = &e;
+    boundary_functions[1] = &function_zero;
+    //boundary_functions[2] = &e;
+    //boundary_functions[3] = &e;
 
     // interpolate_boundary_values fills the boundary_values map.
     VectorTools::interpolate_boundary_values(dof_handler, boundary_functions, boundary_values);
@@ -266,22 +265,23 @@ void WaveSolver::assemble_rhs(const double &time) {
   {
     b = 0.0;
 
+    // b = M * v_k
     mass_matrix.vmult(b, v_old_owned);
 
-    tmp = u_old_owned;
-    tmp.add(u_owned);
-    tmp *= (-deltat/2.0);
-    stiffness_matrix.vmult_add(b, tmp);
+    // tmp = delta_t * F_k
+    tmp = f_k;
+    tmp *= deltat;
+    b.add(tmp);
 
-    tmp = f_k_old;
-    tmp.add(f_k);
-    tmp *= (deltat/2.0);
+    // tmp = A * u_k+1
+    stiffness_matrix.vmult(tmp, u_owned);
+    tmp *= (-deltat);
     b.add(tmp);
   }
 
   // boundary condition on vn+1
   lhs_matrix.copy_from(mass_matrix);
-  {
+  /*{
     // We construct a map that stores, for each DoF corresponding to a
     // Dirichlet condition, the corresponding value. E.g., if the Dirichlet
     // condition is u_i = b, the map will contain the pair (i, b).
@@ -295,10 +295,10 @@ void WaveSolver::assemble_rhs(const double &time) {
     FunctiondU<dim> e{};
     e.set_time(time);
 
-    boundary_functions[0] = &e;
-    boundary_functions[1] = &e;
-    boundary_functions[2] = &e;
-    boundary_functions[3] = &e;
+    //boundary_functions[0] = &e;
+    //boundary_functions[1] = &e;
+    //boundary_functions[2] = &e;
+    //boundary_functions[3] = &e;
 
     // interpolate_boundary_values fills the boundary_values map.
     VectorTools::interpolate_boundary_values(dof_handler, boundary_functions, boundary_values);
@@ -307,7 +307,7 @@ void WaveSolver::assemble_rhs(const double &time) {
     // conditions. This replaces the equations for the boundary DoFs with
     // the corresponding u_i = 0 equations.
     MatrixTools::apply_boundary_values(boundary_values, lhs_matrix, v_owned, b, true);
-  }
+  }*/
 
   // solve for v_n+1 (v_owned)
   {

@@ -56,8 +56,8 @@ int main(int argc, char *argv[]) {
     const std::string  mesh_file_name = "../mesh/squarec0_0500.msh";
 
     constexpr unsigned int degree = 1;
-    constexpr double T            = 20;
-    constexpr double deltat       = 0.01;
+    constexpr double T            = 100;
+    constexpr double deltat       = 0.1;
 
     WaveSolver problem(mesh_file_name, degree, T, deltat);
     problem.setup();
