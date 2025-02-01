@@ -6,7 +6,7 @@ void WaveSolver::setup() {
 #if DIM == 1
   {
     std::cout << "Initializing the mesh" << std::endl;
-    GridGenerator::subdivided_hyper_cube(mesh, 500 , 0.0, 100.0, true);
+    GridGenerator::subdivided_hyper_cube(mesh, 50 , 0.0, 2 * M_PI, true);
     std::cout << "  Number of elements = " << mesh.n_active_cells()
               << std::endl;
 
@@ -233,11 +233,11 @@ void WaveSolver::solve_time_step_BE(const double &time) {
     std::map<types::boundary_id, const Function<dim> *> boundary_functions;
 
     Functions::ZeroFunction<dim> function_zero;
-    FunctionU<dim> e{};
-    e.set_time(time);
+    //FunctionU<dim> e{};
+    //e.set_time(time);
 
     // TODO change it when changing dimension/mesh. Now it works for 2D square centered mesh
-    boundary_functions[0] = &e;
+    boundary_functions[0] = &function_zero;
     boundary_functions[1] = &function_zero;
     //boundary_functions[2] = &e;
     //boundary_functions[3] = &e;

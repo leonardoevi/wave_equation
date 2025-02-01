@@ -14,7 +14,7 @@ class ForcingTerm : public Function<dim>
 {
 public:
     double value(const Point<dim> & /*p*/, const unsigned int /*component*/ = 0) const override {
-        return 0;
+        return 0.0;
     }
 };
 
@@ -23,8 +23,10 @@ template<int dim>
 class FunctionU0 : public Function<dim>
 {
 public:
-    double value(const Point<dim> &  /*p*/, const unsigned int /*component*/ = 0) const override {
-        return 0;
+    double value(const Point<dim> &  p, const unsigned int /*component*/ = 0) const override {
+        const double x = p[0];
+
+        return sin(x);
     }
 };
 
@@ -33,8 +35,10 @@ template<int dim>
 class FunctionV0 : public Function<dim>
 {
 public:
-    double value(const Point<dim> &  /*p*/, const unsigned int /*component*/ = 0) const override {
-        return 0;
+    double value(const Point<dim> &  p, const unsigned int /*component*/ = 0) const override {
+        const double x = p[0], t = this->get_time();
+
+        return -sin(x)*sin(t);
     }
 };
 
@@ -43,10 +47,10 @@ template<int dim>
 class FunctionU : public Function<dim>
 {
 public:
-    double value(const Point<dim> &  /*p*/, const unsigned int /*component*/ = 0) const override {
-        const double t = this->get_time();
-        if (t < 2*M_PI) return sin(t - M_PI * 0.5) + 1;
-        return 0;
+    double value(const Point<dim> & p, const unsigned int /*component*/ = 0) const override {
+        const double x = p[0], t = this->get_time();
+
+        return sin(x)*cos(t);
     }
 };
 
@@ -55,10 +59,10 @@ template<int dim>
 class FunctiondU : public Function<dim>
 {
 public:
-    double value(const Point<dim> &  /*p*/, const unsigned int /*component*/ = 0) const override {
-        const double t = this->get_time();
-        if (t < 2*M_PI) return cos(t - M_PI * 0.5);
-        return 0;
+    double value(const Point<dim> &  p, const unsigned int /*component*/ = 0) const override {
+        const double x = p[0], t = this->get_time();
+
+        return -sin(x)*sin(t);
     }
 };
 
