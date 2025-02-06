@@ -232,15 +232,15 @@ void WaveSolver::solve_time_step_BE(const double &time) {
     // corresponding boundary function.
     std::map<types::boundary_id, const Function<dim> *> boundary_functions;
 
-    Functions::ZeroFunction<dim> function_zero;
-    //FunctionU<dim> e{};
-    //e.set_time(time);
+    //Functions::ZeroFunction<dim> function_zero;
+    FunctionU<dim> e{};
+    e.set_time(time);
 
     // TODO change it when changing dimension/mesh. Now it works for 2D square centered mesh
-    boundary_functions[0] = &function_zero;
-    boundary_functions[1] = &function_zero;
-    //boundary_functions[2] = &e;
-    //boundary_functions[3] = &e;
+    boundary_functions[0] = &e;
+    boundary_functions[1] = &e;
+    boundary_functions[2] = &e;
+    boundary_functions[3] = &e;
 
     // interpolate_boundary_values fills the boundary_values map.
     VectorTools::interpolate_boundary_values(dof_handler, boundary_functions, boundary_values);
